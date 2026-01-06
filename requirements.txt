@@ -1,0 +1,3 @@
+pydantic
+openai
+qdrant_client

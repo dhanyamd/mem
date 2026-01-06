@@ -1,0 +1,7 @@
+{
+    "python.defaultInterpreterPath": "./.venv/bin/python",
+    "python.terminal.activateEnvironment": false,
+    "python.venv.create": false,
+    "python.venv.autoCreate": false,
+    "python.venv.autoActivate": "off"
+}
