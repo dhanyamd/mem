@@ -1,17 +1,17 @@
 import asyncio
 import openai
 import numpy as np 
+import os 
 
-client = openai.AsyncClient() 
+client = openai.AsyncClient(api_key=os.getenv("OPENAI_API_KEY")) 
+
 async def generate_embeddings(strings: list[str]): 
-    print(strings) 
     out = await client.embeddings.create(
         input=strings,
         model="text-embedding-3-small",
         dimensions=64
     )
     embeddings = np.stack([item.embedding for item in out.data]) 
-    print(embeddings.shape) 
     return embeddings 
 
 if __name__ == "__main__": 
@@ -20,4 +20,3 @@ if __name__ == "__main__":
         "I like Machine learning"
     ] 
     asyncio.run(generate_embeddings(texts))
-

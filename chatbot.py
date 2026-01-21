@@ -1,5 +1,5 @@
 import asyncio
-from respone_generator import run_chat
+from response_generator import run_chat
 import sys
 
 async def main(user_id):

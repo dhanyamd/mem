@@ -1,3 +1,9 @@
 pydantic
 openai
 qdrant_client
+llama-cpp-python
+torch
+transformers
+redis
+numpy
+asyncio

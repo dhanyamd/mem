@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.rule import Rule
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
+from qdrant_client import AsyncQdrantClient
 
 import warnings
 
@@ -13,7 +14,8 @@ warnings.filterwarnings("ignore")
 
 from embed import generate_embeddings
 from update_memory import update_memories
-from vectordb import get_all_categories, search_memories, stringify_retrieved_point
+from vectordb import get_all_categories, search_memories, stringify_retrieved_point, client as qdrant_client
+from neural_memory import NeuralMemoryEngine
 
 console = Console(log_path=False)
 
@@ -41,6 +43,7 @@ async def react_agent(
     question: str,
     existing_categories: list[str],
     tools: dict,
+    neural_memory_engine: NeuralMemoryEngine,
     max_iters: int = 2,
 ) -> ResponseGeneratorOutput:
     """
@@ -48,19 +51,17 @@ async def react_agent(
     """
     system_prompt = """You will be given a past conversation transcript between user and an AI agent. Also the latest question by the user.
 
-You have the option to look up the past memories from a vector database to fetch relevant context if required. If you can't find the answer to user's question from transcript or from your own internal knowledge, use the provided search tool calls to search for information.
+You have access to a neural memory system with advanced context retrieval. Use the fetch_similar_memories tool to search for relevant context from the vector database. If the retrieved information doesn't fully address the user's question, you can use the recursive_context_search tool to explore related contexts in the knowledge tree.
 
-You are also provided a list of existing categories in the memory database to quickly search across categories. You can select multiple categories as a list to do your searches. If you select no categories (keep it empty). If you keep categories as empty, we will simply search across the entire database - that is fine too.
+Available tools:
+- fetch_similar_memories: Search for memories by vector similarity and categories
+- recursive_context_search: When you need broader or related context, traverse the knowledge tree upwards (parent contexts) or sideways (sibling contexts) to find additional relevant information
 
-The retrieved information may or may not contain the information user wants. React accordingly.
+The neural memory system automatically manages context through a Radix-Titan architecture, providing instant access to related information through KV cache stitching.
 
-You must output the final response, and also decide the latest interaction needs to be recorded into the memory database. New memories are meant to store new information that the user provides.
+You must output the final response, and also decide if the latest interaction needs to be recorded into the memory database. The system uses surprisal-based gating to automatically determine if new information should be stored.
 
-While responding, you must be aware that you are continuously learning new memories about the user, so if retrieved memories do not directly address the user's question, mention what you know, acknowledge the gaps in your knowledge, and ask the user for information.
-
-If you retrieved records using the search tools, and the information was already present, no need to save a new memory. Only save memory if the new information is richer than what you retrieved or didn't find.
-
-New memories should be made when the USER provides new info. It is not to save information about the the AI or the assistant.
+New memories should be made when the USER provides new info. It is not to save information about the AI or the assistant.
 
 When you have the final answer, use the finalize_response function to provide your response and indicate if memory should be saved."""
 
@@ -85,6 +86,32 @@ When you have the final answer, use the finalize_response function to provide yo
                         }
                     },
                     "required": ["search_text", "categories"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "recursive_context_search",
+                "description": "Explore related contexts in the knowledge tree when you need broader or deeper information. Use this when initial search results are insufficient.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "radix_path": {
+                            "type": "string",
+                            "description": "The radix path from a previous memory search to explore related contexts"
+                        },
+                        "direction": {
+                            "type": "string",
+                            "enum": ["up", "side"],
+                            "description": "Direction to traverse: 'up' for parent contexts (broader), 'side' for sibling contexts (related)"
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Brief explanation of why you need additional context"
+                        }
+                    },
+                    "required": ["radix_path", "direction", "reason"]
                 }
             }
         },
@@ -167,6 +194,34 @@ Use the tools available to search for relevant memories if needed, then provide 
                         "content": tool_result
                     })
                 
+                elif function_name == "recursive_context_search":
+                    # Handle recursive context search
+                    radix_path = function_args.get("radix_path", "")
+                    direction = function_args.get("direction", "up")
+                    reason = function_args.get("reason", "")
+
+                    console.log(f"Recursive context search: {radix_path} ({direction}) - {reason}")
+
+                    related_contexts = await neural_memory_engine.search_recursive_context(
+                        radix_path, direction, max_depth=3
+                    )
+
+                    context_summaries = []
+                    for ctx in related_contexts:
+                        context_summaries.append(f"Related context from {ctx['radix_path']}: {ctx.get('kv_cache', {}).get('memory_text', 'N/A')}")
+
+                    tool_result = json.dumps({
+                        "related_contexts": context_summaries,
+                        "direction": direction,
+                        "radix_path": radix_path
+                    })
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": tool_result
+                    })
+
                 elif function_name == "finalize_response":
                     # Extract the final response
                     response_text = function_args.get("response", "")
@@ -223,6 +278,11 @@ async def run_chat(user_id):
     past_messages = []
     existing_categories = await get_all_categories(user_id=user_id)
 
+    # Initialize Neural Memory Engine
+    neural_memory_engine = NeuralMemoryEngine()
+    await neural_memory_engine.initialize(qdrant_client, client)
+
+    console.print("Initializing Radix-Titan Neural Memory Engine...", style="bold blue")
     console.print("Let's begin to chat!", style="bold green")
 
     while True:
@@ -236,6 +296,7 @@ async def run_chat(user_id):
                 question=question,
                 existing_categories=existing_categories,
                 tools={},
+                neural_memory_engine=neural_memory_engine,
                 max_iters=2,
             )
 
@@ -249,14 +310,34 @@ async def run_chat(user_id):
             )
 
             if out.save_memory:
-                # Ideally, this should run as a background process
+                # Use neural memory engine for storage
+                console.log("Storing neural memory...")
 
-                console.log("Trying to update memory...")
-                update_result = await update_memories(
-                    user_id=user_id,
-                    messages=past_messages[-6:],
-                )
-                console.log(update_result, style="italic")
+                # Extract user message for memory storage
+                user_message = ""
+                ai_response = ""
+                for msg in past_messages[-2:]:  # Last 2 messages
+                    if msg["role"] == "user":
+                        user_message = msg["content"]
+                    elif msg["role"] == "assistant":
+                        ai_response = msg["content"]
+
+                # Combine for context
+                memory_text = f"User: {user_message}\nAssistant: {ai_response}"
+
+                # Extract existing context for surprisal check
+                existing_context = "\n".join([msg["content"] for msg in past_messages[:-2]])
+
+                try:
+                    memory_result = await neural_memory_engine.store_memory(
+                        user_id=user_id,
+                        memory_text=memory_text,
+                        categories=[],  # Could be enhanced to extract categories
+                        existing_context=existing_context
+                    )
+                    console.log(f"Neural memory result: {memory_result}", style="italic")
+                except Exception as e:
+                    console.log(f"Neural memory storage failed: {e}", style="red")
 
                 # Refresh the existing categories that's searchable
                 existing_categories = await get_all_categories(user_id=user_id)

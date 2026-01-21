@@ -1,11 +1,41 @@
-# Python-generated files
+# Project-wide ignores
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv
+env/
+venv/
 build/
 dist/
 wheels/
-*.egg-info
-
-# Virtual environments
-.venv
+*.egg-info/
+.cursor/
 .cursorignore
+.ruff_cache
+model_cache/
+
+# Data and Logs
+data/
+*.log
+brain_service.log
+neural_memory.log
+my_results.jsonl*
+dump.txt
+results.txt
+benchmark_results_table.md
+LongMemEval/data/
+
+# Paper and Documentation
+radix_titan_paper.tex
+radix_titan_paper.pdf
+references.bib
+architecture_tikz.tex
+iclr2026_conference.sty
+context.md
+context2.md
+context3.md
+
+# OS files
+.DS_Store
