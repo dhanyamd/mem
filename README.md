@@ -1,6 +1,6 @@
 # Radix-Titan Neural Memory Engine
 
-This document describes the implementation of the Radix-Titan Neural Memory Engine, a next-generation memory system that combines surprisal-based gating, radix path generation, and KV cache stitching for intelligent memory management.
+This document describes the implementation of the Radix-Titan Neural Memory Engine, a next-generation memory system that combines surprisal-based gating, radix path generation, and memory stitching for intelligent memory management.
 
 ## Architecture Overview
 
