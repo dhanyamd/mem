@@ -4,7 +4,7 @@ Stratum is a hybrid tree-graph neural memory engine designed for long-context AI
 
 ---
 
-## ─── Ingestion Pipeline (Write Path) ───
+## Ingestion Pipeline 
 
 The ingestion pipeline determines whether a piece of information is novel enough to store, and how to structure it hierarchically.
 
@@ -33,7 +33,7 @@ The ingestion pipeline determines whether a piece of information is novel enough
                                │ 5. HIERARCHICAL EXPANSION │
                                └──────┬─────────────┬──────┘
                                       │             │
-                     Vector & Payload ▼             ▼ KV-Cache
+                     Vector & Payload ▼             ▼ Cache
                                ┌───────────┐   ┌───────────┐
                                │  QDRANT   │   │   REDIS   │
                                │ (Semantic)│   │  (Radix)  │
@@ -64,7 +64,7 @@ Retrieval dynamically reconstructs the tree and graph relationships at query tim
                              ┌───► [ 2a. SEMANTIC SEARCH ] ───┐
                              │       (Qdrant Cosine Match)    │
 ┌──────────────┐             │                                ▼
-│  USER QUERY  │ ──► [1. EMBED]                               [3. RADIX RERANK]
+│  USER QUERY  │ ──►      [1. EMBED]                     [3. RADIX RERANK]
 └──────────────┘             │                                ▲
                              │                                │
                              └───► [ 2b. PATH PREDICTION ] ───┘
