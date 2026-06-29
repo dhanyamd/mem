@@ -56,7 +56,7 @@ The ingestion pipeline determines whether a piece of information is novel enough
 
 ---
 
-## ─── Retrieval Pipeline (Read Path) ───
+## Retrieval Pipeline 
 
 Retrieval dynamically reconstructs the tree and graph relationships at query time to synthesize a chronologically accurate response.
 
